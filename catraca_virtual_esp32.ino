@@ -43,7 +43,7 @@ const char* SUPABASE_KEY = SUPABASE_CHAVE_PUBLICA;
 const float LIMITE_CM = 20.0;
 
 const unsigned long INTERVALO_LEITURA = 100;
-const unsigned long TEMPO_BIP = 120;
+const unsigned long TEMPO_BIP = 50;
 const unsigned long TEMPO_TRAVESSIA = 3000;
 const unsigned long TEMPO_LIVRE = 300;
 
