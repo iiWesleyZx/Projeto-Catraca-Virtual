@@ -1,4 +1,3 @@
-
 #include <WiFi.h>
 #include <WebServer.h>
 #include <HTTPClient.h>
@@ -9,15 +8,12 @@
 // CONFIGURACOES DE REDE E SUPABASE
 // ========================================
 
-// Wi-Fi com acesso a internet
 const char* WIFI_SSID = WIFI_SSID_PRIVADO;
 const char* WIFI_SENHA = WIFI_SENHA_PRIVADA;
 
-// Rede propria criada pelo ESP32
 const char* AP_SSID = AP_SSID_PRIVADO;
 const char* AP_SENHA = AP_SENHA_PRIVADA;
 
-// Conexao direta com o Supabase
 const char* SUPABASE_URL = SUPABASE_URL_PRIVADA;
 const char* SUPABASE_KEY = SUPABASE_CHAVE_PUBLICA;
 
@@ -25,15 +21,12 @@ const char* SUPABASE_KEY = SUPABASE_CHAVE_PUBLICA;
 // PINOS
 // ========================================
 
-// Sensor 1
 #define TRIG1 25
 #define ECHO1 34
 
-// Sensor 2
 #define TRIG2 26
 #define ECHO2 33
 
-// Buzzer
 #define BUZZER 32
 
 // ========================================
@@ -42,10 +35,13 @@ const char* SUPABASE_KEY = SUPABASE_CHAVE_PUBLICA;
 
 const float LIMITE_CM = 20.0;
 
-const unsigned long INTERVALO_LEITURA = 100;
+const unsigned long INTERVALO_LEITURA = 50;
 const unsigned long TEMPO_BIP = 50;
-const unsigned long TEMPO_TRAVESSIA = 3000;
-const unsigned long TEMPO_LIVRE = 300;
+const unsigned long TEMPO_TRAVESSIA = 1500;
+const unsigned long TEMPO_LIVRE = 100;
+
+// Fila de movimentacoes
+#define TAMANHO_FILA 20
 
 // ========================================
 // VARIAVEIS
@@ -73,6 +69,16 @@ unsigned long entradas = 0;
 unsigned long saidas = 0;
 
 // ========================================
+// FILA DO SUPABASE
+// ========================================
+
+struct Movimentacao {
+  char tipo[8];
+};
+
+QueueHandle_t filaSupabase = NULL;
+
+// ========================================
 // ESTADOS DA PASSAGEM
 // ========================================
 
@@ -90,6 +96,7 @@ EstadoPassagem estado = AGUARDANDO;
 // ========================================
 
 float medirDistancia(int trig, int echo) {
+
   digitalWrite(trig, LOW);
   delayMicroseconds(2);
 
@@ -111,49 +118,87 @@ float medirDistancia(int trig, int echo) {
 // ========================================
 
 void iniciarBip() {
-  digitalWrite(BUZZER, HIGH);
 
-  buzzerLigado = true;
-  inicioBip = millis();
+  digitalWrite(BUZZER, HIGH);
+  delay(TEMPO_BIP);
+  digitalWrite(BUZZER, LOW);
+
+  buzzerLigado = false;
 }
 
 void atualizarBuzzer() {
+
   if (
     buzzerLigado &&
     millis() - inicioBip >= TEMPO_BIP
   ) {
+
     digitalWrite(BUZZER, LOW);
     buzzerLigado = false;
   }
 }
 
 // ========================================
-// ENVIAR DIRETAMENTE AO SUPABASE
+// ADICIONAR MOVIMENTACAO NA FILA
 // ========================================
 
-void enviarMovimentacao(const char* tipo) {
+void adicionarNaFila(const char* tipo) {
 
-  // A rede propria do ESP32 nao fornece
-  // internet. Precisamos do Wi-Fi externo.
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println(
-      "ERRO: ESP32 sem Wi-Fi com internet!"
-    );
+  if (filaSupabase == NULL) {
+    Serial.println("ERRO: Fila Supabase nao criada!");
     return;
+  }
+
+  Movimentacao movimentacao;
+
+  snprintf(
+    movimentacao.tipo,
+    sizeof(movimentacao.tipo),
+    "%s",
+    tipo
+  );
+
+  if (
+    xQueueSend(
+      filaSupabase,
+      &movimentacao,
+      0
+    ) == pdTRUE
+  ) {
+
+    Serial.print("Movimentacao adicionada a fila: ");
+    Serial.println(tipo);
+
+  } else {
+
+    Serial.println("ERRO: Fila Supabase cheia!");
+    Serial.println("Movimentacao nao enfileirada.");
+  }
+}
+
+// ========================================
+// ENVIAR MOVIMENTACAO AO SUPABASE
+// EXECUTADA SOMENTE NA TAREFA SEPARADA
+// ========================================
+
+bool enviarMovimentacao(const char* tipo) {
+
+  if (WiFi.status() != WL_CONNECTED) {
+
+    Serial.println("Wi-Fi desconectado!");
+    return false;
   }
 
   WiFiClientSecure cliente;
 
-  // SOMENTE PARA TESTES:
-  // Desativa a validacao do certificado TLS.
-  // Para uso definitivo, configurar CA valida.
+  // Apenas para testes.
+  // Em producao, configurar certificado CA.
   cliente.setInsecure();
 
   HTTPClient http;
 
   http.setTimeout(5000);
 
-  // Endpoint REST da tabela existente
   String url = String(SUPABASE_URL);
 
   if (url.endsWith("/")) {
@@ -163,13 +208,11 @@ void enviarMovimentacao(const char* tipo) {
   url += "/rest/v1/movimentacoes";
 
   if (!http.begin(cliente, url)) {
-    Serial.println(
-      "ERRO: Nao foi possivel iniciar HTTP"
-    );
-    return;
+
+    Serial.println("ERRO: Nao foi possivel iniciar HTTP");
+    return false;
   }
 
-  // Cabecalhos exigidos pela API REST
   http.addHeader(
     "Content-Type",
     "application/json"
@@ -180,14 +223,11 @@ void enviarMovimentacao(const char* tipo) {
     SUPABASE_KEY
   );
 
-  // Nao solicitar retorno das linhas,
-  // pois anon nao possui permissao SELECT.
   http.addHeader(
     "Prefer",
     "return=minimal"
   );
 
-  // Dados enviados para a tabela
   String json = "{";
 
   json += "\"dispositivo_id\":\"esp32-01\",";
@@ -209,36 +249,103 @@ void enviarMovimentacao(const char* tipo) {
   Serial.print("JSON: ");
   Serial.println(json);
 
-  // Enviar registro
   int codigo = http.POST(json);
 
   Serial.print("Resposta HTTP: ");
   Serial.println(codigo);
 
-  // PostgREST retorna normalmente 201
-  // quando o INSERT e realizado.
-  if (codigo == 201) {
+  bool sucesso = codigo >= 200 && codigo < 300;
 
-    Serial.println(
-      "SUCESSO: Movimentacao salva!"
-    );
+  if (sucesso) {
+
+    Serial.println("SUCESSO: Movimentacao salva!");
 
   } else {
 
-    Serial.println(
-      "ERRO: Falha ao salvar movimentacao."
-    );
+    Serial.println("ERRO: Falha ao salvar movimentacao.");
 
     if (codigo < 0) {
+
       Serial.println(
         http.errorToString(codigo)
       );
+
     } else {
+
       Serial.println(http.getString());
     }
   }
 
   http.end();
+
+  return sucesso;
+}
+
+// ========================================
+// TAREFA INDEPENDENTE DO SUPABASE
+// ========================================
+
+void tarefaSupabase(void* parametro) {
+
+  Movimentacao movimentacao;
+
+  while (true) {
+
+    // Esperar uma movimentacao chegar na fila
+    if (
+      xQueueReceive(
+        filaSupabase,
+        &movimentacao,
+        portMAX_DELAY
+      ) == pdTRUE
+    ) {
+
+      Serial.println();
+      Serial.println("PROCESSANDO FILA SUPABASE");
+
+      bool sucesso = false;
+
+      // Esperar o Wi-Fi voltar
+      while (WiFi.status() != WL_CONNECTED) {
+
+        Serial.println("Aguardando Wi-Fi...");
+
+        vTaskDelay(pdMS_TO_TICKS(1000));
+      }
+
+      // Ate 3 tentativas de envio
+      for (int tentativa = 1; tentativa <= 3; tentativa++) {
+
+        Serial.print("Tentativa ");
+        Serial.print(tentativa);
+        Serial.println(" de 3");
+
+        sucesso = enviarMovimentacao(
+          movimentacao.tipo
+        );
+
+        if (sucesso) {
+          break;
+        }
+
+        if (tentativa < 3) {
+
+          Serial.println(
+            "Aguardando antes de tentar novamente..."
+          );
+
+          vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+      }
+
+      if (!sucesso) {
+
+        Serial.println(
+          "ERRO: Movimentacao nao enviada apos 3 tentativas."
+        );
+      }
+    }
+  }
 }
 
 // ========================================
@@ -257,7 +364,9 @@ void registrarEntrada() {
   Serial.print("Total de entradas: ");
   Serial.println(entradas);
 
-  enviarMovimentacao("entrada");
+  // Apenas colocar na fila.
+  // Nao esperar resposta do Supabase.
+  adicionarNaFila("entrada");
 }
 
 // ========================================
@@ -276,7 +385,8 @@ void registrarSaida() {
   Serial.print("Total de saidas: ");
   Serial.println(saidas);
 
-  enviarMovimentacao("saida");
+  // Apenas colocar na fila.
+  adicionarNaFila("saida");
 }
 
 // ========================================
@@ -295,8 +405,7 @@ void atualizarSensores() {
 
   ultimoSensor = agora;
 
-  // Ler um sensor por vez para reduzir
-  // interferencia entre ultrassonicos
+  // Ler um sensor por vez
   distancia1 = medirDistancia(TRIG1, ECHO1);
 
   delay(30);
@@ -311,7 +420,7 @@ void atualizarSensores() {
     distancia2 >= 2 &&
     distancia2 <= LIMITE_CM;
 
-  // Detectar apenas o inicio da presenca
+  // Detectar inicio da presenca
   bool novo1 = detectado1 && !anterior1;
   bool novo2 = detectado2 && !anterior2;
 
@@ -327,18 +436,14 @@ void atualizarSensores() {
         estado = ESPERANDO_SENSOR2;
         inicioPassagem = millis();
 
-        Serial.println(
-          "Possivel entrada..."
-        );
+        Serial.println("Possivel entrada...");
 
       } else if (novo2 && !novo1) {
 
         estado = ESPERANDO_SENSOR1;
         inicioPassagem = millis();
 
-        Serial.println(
-          "Possivel saida..."
-        );
+        Serial.println("Possivel saida...");
 
       } else if (novo1 && novo2) {
 
@@ -352,7 +457,6 @@ void atualizarSensores() {
 
       if (novo2) {
 
-        // Confirmou sensor 1 -> sensor 2
         estado = ESPERANDO_LIBERAR;
         inicioLivre = 0;
 
@@ -363,9 +467,7 @@ void atualizarSensores() {
         TEMPO_TRAVESSIA
       ) {
 
-        Serial.println(
-          "Entrada cancelada"
-        );
+        Serial.println("Entrada cancelada");
 
         estado = ESPERANDO_LIBERAR;
         inicioLivre = 0;
@@ -377,7 +479,6 @@ void atualizarSensores() {
 
       if (novo1) {
 
-        // Confirmou sensor 2 -> sensor 1
         estado = ESPERANDO_LIBERAR;
         inicioLivre = 0;
 
@@ -388,9 +489,7 @@ void atualizarSensores() {
         TEMPO_TRAVESSIA
       ) {
 
-        Serial.println(
-          "Saida cancelada"
-        );
+        Serial.println("Saida cancelada");
 
         estado = ESPERANDO_LIBERAR;
         inicioLivre = 0;
@@ -400,8 +499,7 @@ void atualizarSensores() {
 
     case ESPERANDO_LIBERAR:
 
-      // So permite nova passagem quando
-      // os dois sensores estiverem livres
+      // Liberar somente quando ambos estiverem livres
       if (!detectado1 && !detectado2) {
 
         if (inicioLivre == 0) {
@@ -415,6 +513,10 @@ void atualizarSensores() {
 
           estado = AGUARDANDO;
           inicioLivre = 0;
+
+          Serial.println(
+            "Sistema liberado para nova passagem!"
+          );
         }
 
       } else {
@@ -451,7 +553,7 @@ String textoEstado() {
 }
 
 // ========================================
-// API LOCAL DO ESP32 - SEM HTML
+// API LOCAL DO ESP32
 // ========================================
 
 void responderStatus() {
@@ -529,10 +631,21 @@ void setup() {
   digitalWrite(TRIG2, LOW);
   digitalWrite(BUZZER, LOW);
 
+  // Criar fila antes de iniciar a tarefa
+  filaSupabase = xQueueCreate(
+    TAMANHO_FILA,
+    sizeof(Movimentacao)
+  );
+
+  if (filaSupabase == NULL) {
+
+    Serial.println("ERRO AO CRIAR FILA SUPABASE!");
+
+  }
+
   // Permitir rede propria e Wi-Fi externo
   WiFi.mode(WIFI_AP_STA);
 
-  // Criar rede propria
   WiFi.softAP(
     AP_SSID,
     AP_SENHA
@@ -566,6 +679,7 @@ void setup() {
       WiFi.status() != WL_CONNECTED &&
       millis() - inicio < 15000
     ) {
+
       delay(250);
       Serial.print(".");
     }
@@ -574,9 +688,7 @@ void setup() {
 
     if (WiFi.status() == WL_CONNECTED) {
 
-      Serial.println(
-        "Wi-Fi conectado!"
-      );
+      Serial.println("Wi-Fi conectado!");
 
       Serial.print("IP local: ");
       Serial.println(WiFi.localIP());
@@ -587,13 +699,11 @@ void setup() {
 
     } else {
 
-      Serial.println(
-        "Wi-Fi nao conectado!"
-      );
+      Serial.println("Wi-Fi nao conectado!");
     }
   }
 
-  // API local para consultar sensores
+  // API local
   servidor.on(
     "/api/status",
     responderStatus
@@ -601,13 +711,36 @@ void setup() {
 
   servidor.begin();
 
-  Serial.println(
-    "Servidor local iniciado!"
-  );
+  Serial.println("Servidor local iniciado!");
 
-  Serial.println(
-    "Sistema pronto!"
-  );
+  // Iniciar tarefa independente do Supabase
+  if (filaSupabase != NULL) {
+
+    BaseType_t resultado = xTaskCreatePinnedToCore(
+      tarefaSupabase,
+      "TarefaSupabase",
+      8192,
+      NULL,
+      1,
+      NULL,
+      0
+    );
+
+    if (resultado == pdPASS) {
+
+      Serial.println(
+        "Tarefa Supabase iniciada!"
+      );
+
+    } else {
+
+      Serial.println(
+        "ERRO AO INICIAR TAREFA SUPABASE!"
+      );
+    }
+  }
+
+  Serial.println("Sistema pronto!");
 }
 
 // ========================================
@@ -618,12 +751,14 @@ void loop() {
 
   servidor.handleClient();
 
+  // Leitura continua dos sensores
+  servidor.handleClient();
+
   atualizarSensores();
 
   atualizarBuzzer();
 
-  // Tentar recuperar conexao Wi-Fi
-  // se ela cair durante o funcionamento
+  // Recuperar conexao Wi-Fi
   static unsigned long ultimaTentativa = 0;
 
   if (
@@ -634,6 +769,7 @@ void loop() {
     ultimaTentativa = millis();
 
     if (strlen(WIFI_SSID) > 0) {
+
       Serial.println(
         "Tentando reconectar Wi-Fi..."
       );
