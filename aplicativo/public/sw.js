@@ -1,8 +1,8 @@
-const CACHE_STATIC = "catraca-static-v6";
+const CACHE_STATIC = "catraca-static-v7";
 const SHELL_ASSETS = [
   "/manifest.webmanifest",
-  "/icon-192x192.jpeg",
-  "/icon-512x512-.jpeg",
+  "/icon-192x192.png",
+  "/icon-512x512.png",
 ];
 
 self.addEventListener("install", (event) => {
@@ -43,8 +43,8 @@ self.addEventListener("fetch", (event) => {
 
   // Cache apenas de ícones e manifesto (nunca chunks JS/CSS do _next/static em dev).
   if (
-    url.pathname === "/icon-192x192.jpeg" ||
-    url.pathname === "/icon-512x512-.jpeg" ||
+    url.pathname === "/icon-192x192.png" ||
+    url.pathname === "/icon-512x512.png" ||
     url.pathname === "/manifest.webmanifest"
   ) {
     event.respondWith(

@@ -2,6 +2,7 @@
 
 import {
   ArrowDownLeft,
+  ArrowUp,
   ArrowUpDown,
   ArrowUpRight,
   Calendar,
@@ -336,6 +337,9 @@ export default function HistoricoPage() {
                               <span className="text-sm font-semibold text-primary">
                                 {textoMovimento}
                               </span>
+                              <span className="font-mono text-xs text-text-muted">
+                                #{m.id}
+                              </span>
                               {m.identificacao && (
                                 <span className="rounded-md bg-badge-cyan-bg border border-badge-cyan-border px-2 py-0.5 text-[11px] font-medium text-badge-cyan-text">
                                   {m.identificacao}
@@ -353,7 +357,7 @@ export default function HistoricoPage() {
                       );
                     })}
 
-                    {temMais && (
+                    {temMais ? (
                       <div className="flex flex-wrap items-center justify-center gap-2.5 bg-surface-elevated px-4 py-3">
                         <button
                           type="button"
@@ -372,6 +376,21 @@ export default function HistoricoPage() {
                           Mostrar tudo ({grupo.itens.length})
                         </button>
                       </div>
+                    ) : (
+                      grupo.itens.length > LOTE_INICIAL && (
+                        <div className="flex items-center justify-center bg-surface-elevated px-4 py-3">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              window.scrollTo({ top: 0, behavior: "smooth" })
+                            }
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-subtle bg-surface px-3.5 py-1.5 text-xs font-semibold text-secondary hover:bg-muted/70 transition-colors cursor-pointer"
+                          >
+                            <ArrowUp className="h-3.5 w-3.5 text-cyan-600 dark:text-cyan-400" />
+                            <span>Voltar ao início</span>
+                          </button>
+                        </div>
+                      )
                     )}
                   </div>
                 )}

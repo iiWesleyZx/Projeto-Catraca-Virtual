@@ -10,7 +10,7 @@ import {
   RefreshCw,
   X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -53,6 +53,15 @@ export default function MetricasPage() {
     useMovimentacoes();
   const [escala, setEscala] = useState<EscalaMetrica>("diario");
   const [verTop10Meses, setVerTop10Meses] = useState(false);
+
+  useEffect(() => {
+    if (!verTop10Meses) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setVerTop10Meses(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [verTop10Meses]);
 
   const totais = useMemo(
     () => calcularTotais(movimentacoes),
@@ -433,55 +442,13 @@ export default function MetricasPage() {
             </div>
 
             {top10Meses.length > 0 && (
-              <div
-                className="relative"
-                onMouseEnter={() => setVerTop10Meses(true)}
-                onMouseLeave={() => setVerTop10Meses(false)}
+              <button
+                type="button"
+                onClick={() => setVerTop10Meses(true)}
+                className="rounded-lg border border-badge-cyan-border bg-badge-cyan-bg px-2.5 py-1 text-xs font-semibold text-badge-cyan-text hover:opacity-90 transition-opacity cursor-pointer"
               >
-                <button
-                  type="button"
-                  onClick={() => setVerTop10Meses((v) => !v)}
-                  className="rounded-lg border border-badge-cyan-border bg-badge-cyan-bg px-2.5 py-1 text-xs font-semibold text-badge-cyan-text hover:opacity-90 transition-opacity cursor-pointer"
-                >
-                  Ver mais (Top 10)
-                </button>
-
-                {verTop10Meses && (
-                  <div className="absolute right-0 bottom-full mb-2 z-30 w-80 max-w-[85vw] rounded-2xl border border-subtle bg-surface p-4 shadow-2xl">
-                    <div className="flex items-center justify-between mb-3">
-                      <p className="text-xs font-bold uppercase tracking-wider text-primary">
-                        Top 10 Meses Rankeados
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setVerTop10Meses(false)}
-                        aria-label="Fechar Top 10 meses"
-                        className="text-text-muted hover:text-primary p-0.5 cursor-pointer"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                    <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
-                      {top10Meses.map((mes, idx) => (
-                        <div
-                          key={mes.chave}
-                          className="flex items-center justify-between rounded-lg border border-subtle bg-surface-elevated px-3 py-2 text-xs"
-                        >
-                          <span className="font-medium text-primary">
-                            <span className="font-bold text-text-muted mr-1.5">
-                              {idx + 1}º
-                            </span>
-                            {mes.rotulo}
-                          </span>
-                          <span className="font-bold text-badge-cyan-text tabular-nums">
-                            {mes.total.toLocaleString("pt-BR")} pessoas
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+                Ver mais (Top 10)
+              </button>
             )}
           </div>
 
@@ -581,6 +548,79 @@ export default function MetricasPage() {
           )}
         </section>
       </div>
+
+      {/* Modal Top 10 Meses com fundo embaçado */}
+      {verTop10Meses && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-top10-titulo"
+          onClick={() => setVerTop10Meses(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-2xl border border-subtle bg-surface p-5 shadow-2xl"
+          >
+            <div className="flex items-center justify-between border-b border-subtle pb-3 mb-4">
+              <div className="flex items-center gap-2">
+                <Award className="h-5 w-5 text-amber-500" />
+                <h3
+                  id="modal-top10-titulo"
+                  className="text-base font-bold text-primary"
+                >
+                  Top 10 Meses com Maior Fluxo
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setVerTop10Meses(false)}
+                aria-label="Fechar modal"
+                className="rounded-lg border border-subtle bg-surface-elevated p-1.5 text-text-muted hover:text-primary cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="max-h-96 overflow-y-auto space-y-2.5 pr-1">
+              {top10Meses.map((mes, idx) => (
+                <div
+                  key={mes.chave}
+                  className="flex items-center justify-between rounded-xl border border-subtle bg-surface-elevated px-3.5 py-2.5"
+                >
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold ${
+                        idx === 0
+                          ? "bg-badge-amber-bg text-badge-amber-text border border-badge-amber-border"
+                          : idx === 1
+                            ? "bg-muted text-secondary border border-subtle"
+                            : idx === 2
+                              ? "bg-badge-emerald-bg text-badge-emerald-text border border-badge-emerald-border"
+                              : "bg-surface text-text-muted border border-subtle"
+                      }`}
+                    >
+                      {idx + 1}º
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold text-primary">
+                        {mes.rotulo}
+                      </p>
+                      <p className="text-[11px] text-text-muted">
+                        {mes.entradas.toLocaleString("pt-BR")} entradas •{" "}
+                        {mes.saidas.toLocaleString("pt-BR")} saídas
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-sm font-bold text-badge-cyan-text tabular-nums">
+                    {mes.total.toLocaleString("pt-BR")} pessoas
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
