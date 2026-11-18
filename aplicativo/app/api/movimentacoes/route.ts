@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { timingSafeEqual } from "node:crypto";
+import { ehModoPreviewLocal, obterUsuarioAutenticado } from "@/lib/auth";
 
 // ========================================
 // CONEXAO COM SUPABASE
@@ -56,8 +57,35 @@ function autorizado(
 // GET - CONSULTAR MOVIMENTACOES
 // ========================================
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   console.log("GET /api/movimentacoes iniciado");
+
+  const usuario = await obterUsuarioAutenticado();
+  const previewLocal = ehModoPreviewLocal();
+
+  if (!usuario && !previewLocal) {
+    return NextResponse.json(
+      { erro: "Sessão não autenticada" },
+      { status: 401 }
+    );
+  }
+
+  if (
+    previewLocal &&
+    (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY)
+  ) {
+    return NextResponse.json([], {
+      headers: {
+        "Cache-Control": "no-store, max-age=0",
+      },
+    });
+  }
+
+  const limiteParam = Number(request.nextUrl.searchParams.get("limite"));
+  const limite =
+    Number.isFinite(limiteParam) && limiteParam > 0
+      ? Math.min(Math.floor(limiteParam), 5000)
+      : 1000;
 
   try {
     const supabase = conectarSupabase();
@@ -68,7 +96,7 @@ export async function GET() {
         "id, dispositivo_id, tipo, quantidade, criado_em"
       )
       .order("criado_em", { ascending: false })
-      .limit(1000);
+      .limit(limite);
 
     if (error) {
       console.error("=== ERRO SUPABASE GET ===");
