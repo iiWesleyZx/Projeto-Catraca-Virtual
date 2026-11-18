@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Catraca Virtual ESP32",
-    short_name: "Catraca ESP32",
+    name: "Catraca Virtual",
+    short_name: "Catraca Virtual",
     description:
       "Sistema de monitoramento em tempo real e métricas de movimentação de pessoas.",
     start_url: "/",

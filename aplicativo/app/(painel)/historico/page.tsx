@@ -5,7 +5,8 @@ import {
   ArrowUpDown,
   ArrowUpRight,
   Calendar,
-  Cpu,
+  ChevronDown,
+  ChevronRight,
   History,
   RefreshCw,
   Search,
@@ -21,6 +22,8 @@ import {
 type FiltroTipo = "todos" | "entrada" | "saida";
 type Ordem = "desc" | "asc";
 
+const LOTE_INICIAL = 10;
+
 export default function HistoricoPage() {
   const { movimentacoes, carregando, atualizando, erro, recarregar } =
     useMovimentacoes();
@@ -31,6 +34,10 @@ export default function HistoricoPage() {
   const [ordem, setOrdem] = useState<Ordem>("desc");
   const [referenciaHoje, setReferenciaHoje] = useState<Date | undefined>(
     undefined
+  );
+  const [diasAbertos, setDiasAbertos] = useState<Record<string, boolean>>({});
+  const [limitesPorDia, setLimitesPorDia] = useState<Record<string, number>>(
+    {}
   );
 
   useEffect(() => {
@@ -93,6 +100,27 @@ export default function HistoricoPage() {
     [filtradas, referenciaHoje]
   );
 
+  function alternarDia(chave: string) {
+    setDiasAbertos((prev) => ({
+      ...prev,
+      [chave]: !prev[chave],
+    }));
+  }
+
+  function mostrarMais(chave: string) {
+    setLimitesPorDia((prev) => ({
+      ...prev,
+      [chave]: (prev[chave] ?? LOTE_INICIAL) + 10,
+    }));
+  }
+
+  function mostrarTudo(chave: string, total: number) {
+    setLimitesPorDia((prev) => ({
+      ...prev,
+      [chave]: total,
+    }));
+  }
+
   return (
     <div className="space-y-6">
       {/* Cabeçalho */}
@@ -102,7 +130,7 @@ export default function HistoricoPage() {
             Histórico de Movimentações
           </h1>
           <p className="mt-1 text-sm text-text-muted">
-            Consulte entradas e saídas por dia, horário, mês ou ano
+            Clique em um dia para expandir e consultar entradas e saídas
           </p>
         </div>
 
@@ -151,7 +179,7 @@ export default function HistoricoPage() {
             <button
               type="button"
               onClick={() => setOrdem((o) => (o === "desc" ? "asc" : "desc"))}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-surface-elevated border border-subtle hover:bg-muted/60 px-3.5 py-2 text-xs font-medium text-secondary cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-surface-elevated border border-subtle hover:bg-muted/70 px-3.5 py-2 text-xs font-medium text-secondary cursor-pointer"
             >
               <ArrowUpDown className="h-3.5 w-3.5 text-cyan-600 dark:text-cyan-400" />
               <span>{ordem === "desc" ? "Mais recentes" : "Mais antigos"}</span>
@@ -231,92 +259,125 @@ export default function HistoricoPage() {
           </p>
         </div>
       ) : (
-        <div className="space-y-6">
-          {grupos.map((grupo) => (
-            <section key={grupo.chave} className="space-y-2.5">
-              <div className="flex items-center justify-between px-1">
-                <h2 className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-muted capitalize">
-                  <Calendar className="h-3.5 w-3.5 text-cyan-600 dark:text-cyan-400" />
-                  {grupo.rotulo}
-                </h2>
-                <span className="text-xs text-text-muted">
-                  {grupo.itens.length}{" "}
-                  {grupo.itens.length === 1 ? "registro" : "registros"}
-                </span>
-              </div>
+        <div className="space-y-3">
+          {grupos.map((grupo) => {
+            const aberto = Boolean(diasAbertos[grupo.chave]);
+            const limite = limitesPorDia[grupo.chave] ?? LOTE_INICIAL;
+            const itensVisiveis = grupo.itens.slice(0, limite);
+            const temMais = grupo.itens.length > itensVisiveis.length;
 
-              <div className="overflow-hidden rounded-2xl border border-subtle bg-surface divide-y divide-subtle shadow-sm">
-                {grupo.itens.map((m) => {
-                  const ehEntrada = m.tipo === "entrada";
-                  const hora = new Date(m.criado_em).toLocaleTimeString(
-                    "pt-BR",
-                    {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      second: "2-digit",
-                    }
-                  );
+            return (
+              <section
+                key={grupo.chave}
+                className="overflow-hidden rounded-2xl border border-subtle bg-surface shadow-sm"
+              >
+                <button
+                  type="button"
+                  onClick={() => alternarDia(grupo.chave)}
+                  aria-expanded={aberto}
+                  className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left hover:bg-muted/60 transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center gap-2.5">
+                    {aberto ? (
+                      <ChevronDown className="h-4 w-4 text-cyan-600 dark:text-cyan-400 shrink-0" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-text-muted shrink-0" />
+                    )}
+                    <Calendar className="h-4 w-4 text-cyan-600 dark:text-cyan-400 shrink-0" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-primary capitalize">
+                      {grupo.rotulo}
+                    </span>
+                  </div>
 
-                  return (
-                    <div
-                      key={m.id}
-                      className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5 hover:bg-muted/60 transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
+                  <span className="rounded-full bg-surface-elevated border border-subtle px-2.5 py-0.5 text-xs font-medium text-text-muted">
+                    {grupo.itens.length}{" "}
+                    {grupo.itens.length === 1 ? "registro" : "registros"}
+                  </span>
+                </button>
+
+                {aberto && (
+                  <div className="border-t border-subtle divide-y divide-subtle">
+                    {itensVisiveis.map((m) => {
+                      const ehEntrada = m.tipo === "entrada";
+                      const hora = new Date(m.criado_em).toLocaleTimeString(
+                        "pt-BR",
+                        {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          second: "2-digit",
+                        }
+                      );
+
+                      const textoMovimento = ehEntrada
+                        ? `${m.quantidade} ${m.quantidade === 1 ? "pessoa entrou" : "pessoas entraram"}`
+                        : `${m.quantidade} ${m.quantidade === 1 ? "pessoa saiu" : "pessoas saíram"}`;
+
+                      return (
                         <div
-                          className={`flex h-9 w-9 items-center justify-center rounded-xl border ${
-                            ehEntrada
-                              ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                              : "border-amber-500/30 bg-amber-500/15 text-amber-600 dark:text-amber-400"
-                          }`}
+                          key={m.id}
+                          className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 hover:bg-muted/50 transition-colors"
                         >
-                          {ehEntrada ? (
-                            <ArrowDownLeft className="h-4 w-4" />
-                          ) : (
-                            <ArrowUpRight className="h-4 w-4" />
-                          )}
-                        </div>
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`flex h-9 w-9 items-center justify-center rounded-xl border ${
+                                ehEntrada
+                                  ? "border-badge-emerald-border bg-badge-emerald-bg text-badge-emerald-text"
+                                  : "border-badge-amber-border bg-badge-amber-bg text-badge-amber-text"
+                              }`}
+                            >
+                              {ehEntrada ? (
+                                <ArrowDownLeft className="h-4 w-4" />
+                              ) : (
+                                <ArrowUpRight className="h-4 w-4" />
+                              )}
+                            </div>
 
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-primary">
-                              {ehEntrada ? "Entrada" : "Saída"}
-                            </span>
-                            <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-secondary">
-                              {m.quantidade}{" "}
-                              {m.quantidade === 1 ? "pessoa" : "pessoas"}
-                            </span>
-                            {m.identificacao && (
-                              <span className="rounded-md bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 text-[11px] font-medium text-cyan-700 dark:text-cyan-300">
-                                {m.identificacao}
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-semibold text-primary">
+                                {textoMovimento}
                               </span>
-                            )}
+                              {m.identificacao && (
+                                <span className="rounded-md bg-badge-cyan-bg border border-badge-cyan-border px-2 py-0.5 text-[11px] font-medium text-badge-cyan-text">
+                                  {m.identificacao}
+                                </span>
+                              )}
+                            </div>
                           </div>
 
-                          <div className="mt-0.5 flex items-center gap-3 text-xs text-text-muted">
-                            <span className="inline-flex items-center gap-1">
-                              <Cpu className="h-3 w-3" />
-                              {m.dispositivo_id}
-                            </span>
-                            <span>•</span>
-                            <span className="font-mono text-[11px]">
-                              #{m.id}
-                            </span>
+                          <div className="text-right">
+                            <p className="text-sm font-mono font-medium text-secondary tabular-nums">
+                              {hora}
+                            </p>
                           </div>
                         </div>
-                      </div>
+                      );
+                    })}
 
-                      <div className="text-right">
-                        <p className="text-sm font-mono font-medium text-secondary tabular-nums">
-                          {hora}
-                        </p>
+                    {temMais && (
+                      <div className="flex flex-wrap items-center justify-center gap-2.5 bg-surface-elevated px-4 py-3">
+                        <button
+                          type="button"
+                          onClick={() => mostrarMais(grupo.chave)}
+                          className="rounded-xl border border-badge-cyan-border bg-badge-cyan-bg px-3.5 py-1.5 text-xs font-semibold text-badge-cyan-text hover:opacity-90 transition-opacity cursor-pointer"
+                        >
+                          Mostrar mais (+10)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            mostrarTudo(grupo.chave, grupo.itens.length)
+                          }
+                          className="rounded-xl border border-subtle bg-surface px-3.5 py-1.5 text-xs font-semibold text-secondary hover:bg-muted/70 transition-colors cursor-pointer"
+                        >
+                          Mostrar tudo ({grupo.itens.length})
+                        </button>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          ))}
+                    )}
+                  </div>
+                )}
+              </section>
+            );
+          })}
         </div>
       )}
     </div>

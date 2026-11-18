@@ -15,14 +15,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Catraca Virtual ESP32",
+  title: "Catraca Virtual",
   description:
     "Sistema de monitoramento em tempo real e métricas de movimentação de pessoas.",
-  applicationName: "Catraca Virtual ESP32",
+  applicationName: "Catraca Virtual",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Catraca ESP32",
+    title: "Catraca Virtual",
   },
   icons: {
     icon: [

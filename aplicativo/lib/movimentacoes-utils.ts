@@ -1,5 +1,6 @@
 import type {
   EscalaMetrica,
+  HorarioPicoItem,
   Movimentacao,
   PontoPeriodo,
   TopMesItem,
@@ -53,7 +54,8 @@ export function calcularTotais(movimentacoes: Movimentacao[]) {
     entradas,
     saidas,
     presentes: entradas - saidas,
-    total: entradas + saidas,
+    fluxo: Math.max(entradas, saidas),
+    total: Math.max(entradas, saidas),
   };
 }
 
@@ -170,7 +172,7 @@ export function agregarPorEscala(
     } else if (m.tipo === "saida") {
       atual.saidas += qtd;
     }
-    atual.total = atual.entradas + atual.saidas;
+    atual.total = Math.max(atual.entradas, atual.saidas);
     mapa.set(chave, atual);
   }
 
@@ -214,7 +216,7 @@ export function calcularTopMeses(
     } else if (m.tipo === "saida") {
       atual.saidas += qtd;
     }
-    atual.total = atual.entradas + atual.saidas;
+    atual.total = Math.max(atual.entradas, atual.saidas);
     mapa.set(chave, atual);
   }
 
@@ -259,13 +261,94 @@ export function calcularTopTrimestres(
     } else if (m.tipo === "saida") {
       atual.saidas += qtd;
     }
-    atual.total = atual.entradas + atual.saidas;
+    atual.total = Math.max(atual.entradas, atual.saidas);
     mapa.set(chave, atual);
   }
 
   return Array.from(mapa.values())
     .sort((a, b) => b.total - a.total || b.chave.localeCompare(a.chave))
     .slice(0, limite);
+}
+
+const CORES_HORARIOS = [
+  "#06b6d4",
+  "#10b981",
+  "#f59e0b",
+  "#8b5cf6",
+  "#ec4899",
+  "#64748b",
+];
+
+export function calcularHorariosPico(movimentacoes: Movimentacao[]): {
+  top3: HorarioPicoItem[];
+  grafico: HorarioPicoItem[];
+} {
+  if (movimentacoes.length === 0) {
+    return { top3: [], grafico: [] };
+  }
+
+  const dias = new Set<string>();
+  const porHora = new Map<number, { entradas: number; saidas: number }>();
+
+  for (const m of movimentacoes) {
+    const d = new Date(m.criado_em);
+    if (Number.isNaN(d.getTime())) continue;
+
+    dias.add(obterChaveDataLocal(m.criado_em));
+    const hora = d.getHours();
+    const atual = porHora.get(hora) ?? { entradas: 0, saidas: 0 };
+    const qtd = Number.isFinite(m.quantidade) ? m.quantidade : 0;
+
+    if (m.tipo === "entrada") {
+      atual.entradas += qtd;
+    } else if (m.tipo === "saida") {
+      atual.saidas += qtd;
+    }
+    porHora.set(hora, atual);
+  }
+
+  const totalDias = Math.max(1, dias.size);
+
+  const lista: HorarioPicoItem[] = Array.from(porHora.entries())
+    .map(([hora, { entradas, saidas }]) => {
+      const fluxo = Math.max(entradas, saidas);
+      const hIni = String(hora).padStart(2, "0");
+      const hFim = String((hora + 1) % 24).padStart(2, "0");
+      return {
+        hora,
+        rotulo: `${hIni}h`,
+        faixa: `${hIni}:00 – ${hFim}:00`,
+        fluxo,
+        media: Number((fluxo / totalDias).toFixed(1)),
+        cor: CORES_HORARIOS[0],
+      };
+    })
+    .filter((item) => item.fluxo > 0)
+    .sort((a, b) => b.media - a.media || b.fluxo - a.fluxo || a.hora - b.hora)
+    .map((item, idx) => ({
+      ...item,
+      cor: CORES_HORARIOS[Math.min(idx, CORES_HORARIOS.length - 1)],
+    }));
+
+  const top3 = lista.slice(0, 3);
+  const principais = lista.slice(0, 5);
+  const restantes = lista.slice(5);
+
+  const grafico = [...principais];
+  if (restantes.length > 0) {
+    const fluxoOutros = restantes.reduce((acc, item) => acc + item.fluxo, 0);
+    const mediaOutros = Number((fluxoOutros / totalDias).toFixed(1));
+    grafico.push({
+      hora: -1,
+      rotulo: "Outros",
+      faixa: "Demais horários",
+      fluxo: fluxoOutros,
+      media: mediaOutros,
+      cor: CORES_HORARIOS[5],
+    });
+  }
+
+  return { top3, grafico };
 }
 
 export function formatarTempoRelativo(

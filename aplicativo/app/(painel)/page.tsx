@@ -193,10 +193,12 @@ export default function DashboardPage() {
               DENTRO
             </p>
             <p className="mt-1 text-5xl font-bold tracking-tight text-primary tabular-nums">
-              {carregando ? "—" : totais.presentes.toLocaleString("pt-BR")}
+              {carregando
+                ? "—"
+                : Math.max(0, hoje.presentes).toLocaleString("pt-BR")}
             </p>
             <p className="mt-2 text-xs text-text-muted">
-              Pessoas atualmente no ambiente monitorado
+              Pessoas presentes hoje (reinicia à meia-noite)
             </p>
           </div>
         </div>
@@ -270,9 +272,9 @@ export default function DashboardPage() {
               </p>
             </div>
             <div className="rounded-xl bg-surface-elevated p-3 border border-subtle">
-              <p className="text-[11px] text-text-muted">Total</p>
+              <p className="text-[11px] text-text-muted">Fluxo</p>
               <p className="mt-1 text-lg font-bold text-primary tabular-nums">
-                {carregando ? "—" : hoje.total.toLocaleString("pt-BR")}
+                {carregando ? "—" : hoje.fluxo.toLocaleString("pt-BR")}
               </p>
             </div>
           </div>

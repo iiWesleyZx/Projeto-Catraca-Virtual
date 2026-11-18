@@ -42,3 +42,12 @@ export interface TopTrimestreItem {
   saidas: number;
   total: number;
 }
+
+export interface HorarioPicoItem {
+  hora: number;
+  rotulo: string;
+  faixa: string;
+  fluxo: number;
+  media: number;
+  cor: string;
+}
