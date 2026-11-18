@@ -1,4 +1,4 @@
-const CACHE_STATIC = "catraca-static-v7";
+const CACHE_STATIC = "catraca-static-v8";
 const SHELL_ASSETS = [
   "/manifest.webmanifest",
   "/icon-192x192.png",
